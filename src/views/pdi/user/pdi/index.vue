@@ -36,12 +36,7 @@
 
         <el-row :gutter="10" class="mb8">
             <el-col :span="1.5">
-                <el-button
-                    type="primary"
-                    plain
-                    icon="UploadFilled"
-                    @click="uploadDialog = true"
-                    v-hasPermi="['serve:video:add']">
+                <el-button type="primary" plain icon="UploadFilled" @click="uploadDialog = true">
                     上传
                 </el-button>
             </el-col>
@@ -51,8 +46,7 @@
                     plain
                     icon="Document"
                     :disabled="multiple"
-                    @click="handleDelete"
-                    v-hasPermi="['serve:video:remove']">
+                    @click="handleDelete">
                     生成
                 </el-button>
             </el-col>
@@ -74,7 +68,11 @@
                     </div>
                 </template>
             </el-table-column>
-            <el-table-column label="文件大小" align="center" prop="fileSize" />
+            <el-table-column
+                label="文件大小"
+                align="center"
+                prop="fileSize"
+                :formatter="formatFileSize" />
             <el-table-column label="文件类型" align="center" prop="mimeType" />
             <el-table-column label="视频时长" align="center" prop="duration" />
             <el-table-column label="分辨率" align="center" prop="resolution" />
@@ -111,20 +109,10 @@
             </el-table-column>
             <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
                 <template #default="scope">
-                    <el-button
-                        link
-                        type="primary"
-                        icon="Edit"
-                        @click="handleUpdate(scope.row)"
-                        v-hasPermi="['serve:video:edit']">
-                        修改
+                    <el-button link type="primary" icon="Document" @click="handleDelete(scope.row)">
+                        生成
                     </el-button>
-                    <el-button
-                        link
-                        type="primary"
-                        icon="Delete"
-                        @click="handleDelete(scope.row)"
-                        v-hasPermi="['serve:video:remove']">
+                    <el-button link type="primary" icon="Delete" @click="handleDelete(scope.row)">
                         删除
                     </el-button>
                 </template>
@@ -151,23 +139,19 @@
 
         <!-- 上传视频弹窗 -->
         <el-dialog title="上传视频" v-model="uploadDialog" width="90%" append-to-body>
-            <!-- <span>Open the dialog from the center from the screen</span> -->
             <el-upload
                 drag
                 list-type="picture"
                 :on-progress="uploadVideoProcess"
                 :auto-upload="false"
-                action="https://run.mocky.io/v3/9d059bf9-4660-45f2-925d-ce80ad6c4d15"
+                v-model:file-list="fileList"
                 multiple>
                 <el-icon class="el-icon--upload"><upload-filled /></el-icon>
                 <div class="el-upload__text">
-                    Drop file here or
-                    <em>click to upload</em>
+                    将文件拖到此处，或
+                    <em>点击上传</em>
                 </div>
-                <div class="el-upload__tip">jpg/png files with a size less than 500kb</div>
-                <template #tip>
-                    <el-button type="primary" @click="getPostSignatureInfo">上传到服务器</el-button>
-                </template>
+                <div class="el-upload__tip">mp4/avi 等文件必须小于 500MB</div>
                 <template #file="{ file }">
                     <el-progress v-if="file.status === 'uploading'" :percentage="file.percentage" />
                     <span v-else>{{ file.name }}</span>
@@ -176,49 +160,13 @@
 
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button @click="uploadDialog = false">Cancel</el-button>
-                    <el-button type="primary" @click="uploadDialog = false">Confirm</el-button>
-                </div>
-            </template>
-        </el-dialog>
-        <!-- 添加或修改管道视频对话框 -->
-        <el-dialog :title="title" v-model="open" width="500px" append-to-body>
-            <el-form ref="videoRef" :model="form" :rules="rules" label-width="80px">
-                <el-form-item label="视频名" prop="videoName">
-                    <el-input v-model="form.videoName" placeholder="请输入视频文件名" />
-                </el-form-item>
-                <!-- <el-form-item label="视频URL" prop="videoUrl">
-                    <file-upload v-model="form.videoUrl" />
-                </el-form-item> -->
-
-                <el-form-item label="文件大小" prop="fileSize">
-                    <el-input v-model="form.fileSize" placeholder="请输入文件大小(字节)" />
-                </el-form-item>
-                <el-form-item label="视频时长" prop="duration">
-                    <el-input v-model="form.duration" placeholder="请输入视频时长(秒)" />
-                </el-form-item>
-                <el-form-item label="分辨率" prop="resolution">
-                    <el-input
-                        v-model="form.resolution"
-                        placeholder="请输入视频分辨率，如1920x1080" />
-                </el-form-item>
-                <el-form-item label="上传状态" prop="uploadStatus">
-                    <el-select v-model="form.uploadStatus" placeholder="请选择上传状态">
-                        <el-option
-                            v-for="dict in pdi_upload_status"
-                            :key="dict.value"
-                            :label="dict.label"
-                            :value="parseInt(dict.value)"></el-option>
-                    </el-select>
-                </el-form-item>
-                <el-form-item label="备注" prop="remark">
-                    <el-input v-model="form.remark" type="textarea" placeholder="请输入内容" />
-                </el-form-item>
-            </el-form>
-            <template #footer>
-                <div class="dialog-footer">
-                    <el-button type="primary" @click="submitForm">确 定</el-button>
-                    <el-button @click="cancel">取 消</el-button>
+                    <el-button @click="uploadDialog = false">取消</el-button>
+                    <el-button
+                        type="primary"
+                        :disabled="fileList.length === 0"
+                        @click="getPostSignatureInfo">
+                        上传到服务器
+                    </el-button>
                 </div>
             </template>
         </el-dialog>
@@ -233,23 +181,23 @@
     import { getToken } from '@/utils/auth'
 
     const videoList = ref([])
-    const open = ref(false)
     const loading = ref(true)
     const showSearch = ref(true)
     const ids = ref([])
     const single = ref(true)
     const multiple = ref(true)
     const total = ref(0)
-    const title = ref('')
     const daterangeCreateTime = ref([])
     const uploadDialog = ref(false)
+
+    const fileList = ref([])
+
     const data = reactive({
         form: {},
         queryParams: {
             pageNum: 1,
             pageSize: 10,
             videoName: null,
-            uploadStatus: null,
             createBy: null,
             createTime: null,
         },
@@ -276,13 +224,6 @@
                     trigger: 'blur',
                 },
             ],
-            uploadStatus: [
-                {
-                    required: true,
-                    message: '上传状态:0-上传中,1-上传成功,2-上传失败不能为空',
-                    trigger: 'change',
-                },
-            ],
         },
         uploadFormData: {
             host: '',
@@ -299,7 +240,7 @@
         },
     })
 
-    const { queryParams, form, rules, uploadFormData } = toRefs(data)
+    const { queryParams, uploadFormData } = toRefs(data)
 
     const parsePipeInfo = (pipeInfo) => {
         try {
@@ -324,31 +265,21 @@
         }
         return labelMap[key] || key
     }
+    const formatFileSize = (row) => {
+        const size = Number(row.fileSize)
 
+        if (size < 1024) return size + ' B'
+        else if (size < 1024 * 1024) return (size / 1024).toFixed(2) + ' KB'
+        else if (size < 1024 * 1024 * 1024) return (size / (1024 * 1024)).toFixed(2) + ' MB'
+        else return (size / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
+    }
+    // 上传状态控制
+    const videoFlag = ref(false)
+    const videoUploadPercent = ref(0)
     // 上传进度
     const uploadVideoProcess = (event, file) => {
         videoFlag.value = true
         videoUploadPercent.value = Math.round(file.percentage)
-    }
-
-    const getPostSignatureInfo = () => {
-        getPostSignature().then((res) => {
-            if (res.code !== 200) {
-                ElMessage.error(res.msg || '获取签名失败')
-                return
-            }
-            uploadFormData.success_action_status = '200'
-            uploadFormData.policy = res.data.policy
-            uploadFormData.x_oss_signature = res.data.signature
-            uploadFormData.x_oss_credential = res.data.x_oss_credential
-            uploadFormData.x_oss_date = res.data.x_oss_date
-            uploadFormData.key = res.data.dir // 文件名
-            uploadFormData.x_oss_security_token = res.data.security_token
-            uploadFormData.callback = res.data.callback // 添加回调参数
-            uploadFormData.host = res.data.host
-            // uploadFormData.file = ""; // file 必须为最后一个表单域
-            console.log(res)
-        })
     }
 
     /** 查询管道视频列表 */
@@ -364,34 +295,6 @@
             total.value = response.total
             loading.value = false
         })
-    }
-
-    // 取消按钮
-    function cancel() {
-        open.value = false
-        reset()
-    }
-
-    // 表单重置
-    function reset() {
-        form.value = {
-            id: null,
-            videoName: null,
-            videoUrl: null,
-            thumbnailUrl: null,
-            fileSize: null,
-            mimeType: null,
-            duration: null,
-            resolution: null,
-            pipeInfo: null,
-            uploadStatus: null,
-            uploadError: null,
-            createBy: null,
-            remark: null,
-            createTime: null,
-            updateTime: null,
-        }
-        proxy.resetForm('videoRef')
     }
 
     /** 搜索按钮操作 */
@@ -414,45 +317,6 @@
         multiple.value = !selection.length
     }
 
-    /** 新增按钮操作 */
-    function handleAdd() {
-        reset()
-        open.value = true
-        title.value = '添加管道视频'
-    }
-
-    /** 修改按钮操作 */
-    function handleUpdate(row) {
-        reset()
-        const _id = row.id || ids.value
-        getVideo(_id).then((response) => {
-            form.value = response.data
-            open.value = true
-            title.value = '修改管道视频'
-        })
-    }
-
-    /** 提交按钮 */
-    function submitForm() {
-        proxy.$refs['videoRef'].validate((valid) => {
-            if (valid) {
-                if (form.value.id != null) {
-                    updateVideo(form.value).then((response) => {
-                        proxy.$modal.msgSuccess('修改成功')
-                        open.value = false
-                        getList()
-                    })
-                } else {
-                    addVideo(form.value).then((response) => {
-                        proxy.$modal.msgSuccess('新增成功')
-                        open.value = false
-                        getList()
-                    })
-                }
-            }
-        })
-    }
-
     /** 删除按钮操作 */
     function handleDelete(row) {
         const _ids = row.id || ids.value
@@ -466,17 +330,6 @@
                 proxy.$modal.msgSuccess('删除成功')
             })
             .catch(() => {})
-    }
-
-    /** 导出按钮操作 */
-    function handleExport() {
-        proxy.download(
-            'serve/video/export',
-            {
-                ...queryParams.value,
-            },
-            `video_${new Date().getTime()}.xlsx`
-        )
     }
 
     const visible = ref(false)
