@@ -50,6 +50,17 @@
                     生成
                 </el-button>
             </el-col>
+            <el-col :span="1.5">
+                <el-button
+                    type="danger"
+                    plain
+                    icon="Delete"
+                    :disabled="multiple"
+                    @click="handleDelete">
+                    删除
+                </el-button>
+            </el-col>
+
             <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
         </el-row>
         <el-table v-loading="loading" :data="videoList" @selection-change="handleSelectionChange">
@@ -164,7 +175,7 @@
                     <el-button
                         type="primary"
                         :disabled="fileList.length === 0"
-                        @click="getPostSignatureInfo">
+                        @click="uploadToOSS">
                         上传到服务器
                     </el-button>
                 </div>
@@ -175,6 +186,7 @@
 
 <script setup name="Video">
     import { listVideo, getVideo, delVideo, addVideo, updateVideo } from '@/api/pdi/pdi'
+    import { getVideoInfo, captureMiddleFrame } from '@/utils/video-tools'
 
     const { proxy } = getCurrentInstance()
     const { pdi_upload_status } = proxy.useDict('pdi_upload_status')
@@ -281,6 +293,63 @@
         videoFlag.value = true
         videoUploadPercent.value = Math.round(file.percentage)
     }
+    const uploadToOSS = async () => {
+        for (const fileItem of fileList.value) {
+            const file = fileItem.raw
+            console.log(fileItem)
+            // 1️⃣ 获取视频信息
+            const info = await getVideoInfo(file)
+            console.log('视频信息:', info)
+
+            // 2️⃣ 截取视频中间帧为缩略图
+            const image = await captureMiddleFrame(file)
+            console.log('生成缩略图:', image)
+
+            // 3️⃣ 调用上传接口
+            await addVideo({
+                pipeVideo: JSON.stringify({
+                    videoName: file.name,
+                    fileSize: file.size,
+                    mimeType: file.type,
+                    duration: info.duration,
+                    resolution: info.resolution,
+                }),
+                image: image, // 缩略图文件对象
+            }).then((res) => {
+                if (res.code === 200) {
+                    const data = res.data
+                    console.log(data)
+                    let formData = new FormData()
+                    formData.append('success_action_status', '200')
+                    formData.append('policy', data.policy)
+                    formData.append('x-oss-signature', data.signature)
+                    formData.append('x-oss-signature-version', 'OSS4-HMAC-SHA256')
+                    formData.append('x-oss-credential', data.x_oss_credential)
+                    formData.append('x-oss-date', data.x_oss_date)
+                    formData.append('key', data.dir + file.name) // 文件名
+                    formData.append('x-oss-security-token', data.security_token)
+                    formData.append('callback', data.callback) // 添加回调参数
+                    formData.append('file', file) // file 必须为最后一个表单域
+                    console.log(formData.forEach((value, key) => console.log(key + ': ' + value)))
+                    fetch(data.host, {
+                        method: 'POST',
+                        body: formData,
+                    }).then((response) => {
+                        if (response.ok) {
+                            console.log('上传成功', response)
+                            proxy.$modal.msgSuccess('文件已上传')
+                        } else {
+                            console.log('上传失败', response)
+                            proxy.$modal.msgError('上传失败，请稍后再试')
+                        }
+                    })
+                } else {
+                    proxy.$modal.msgError(`${file.name} 上传失败: ${res.msg}`)
+                }
+            })
+            // console.log(`${file.name} 上传完成`)
+        }
+    }
 
     /** 查询管道视频列表 */
     function getList() {
@@ -321,7 +390,7 @@
     function handleDelete(row) {
         const _ids = row.id || ids.value
         proxy.$modal
-            .confirm('是否确认删除管道视频编号为"' + _ids + '"的数据项？')
+            .confirm('是否确认删除所选的数据项？')
             .then(function () {
                 return delVideo(_ids)
             })

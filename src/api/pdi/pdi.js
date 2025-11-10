@@ -20,9 +20,12 @@ export function getVideo(id) {
 // 新增管道视频
 export function addVideo(data) {
     return request({
-        url: '/user/pdi/video',
+        url: '/user/pdi/video/add',
         method: 'post',
         data: data,
+        headers: {
+            'Content-Type': 'multipart/form-data',
+        },
     })
 }
 
