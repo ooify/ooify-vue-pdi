@@ -20,12 +20,17 @@ export function getVideo(id) {
 // 新增管道视频
 export function addVideo(data) {
     return request({
-        url: '/user/pdi/video/add',
+        url: '/user/pdi/video',
         method: 'post',
         data: data,
-        headers: {
-            'Content-Type': 'multipart/form-data',
-        },
+    })
+}
+
+// reupload
+export function reuploadVideo(id) {
+    return request({
+        url: '/user/pdi/video/reupload/' + id,
+        method: 'post',
     })
 }
 
@@ -35,6 +40,15 @@ export function updateVideo(data) {
         url: '/user/pdi/video',
         method: 'put',
         data: data,
+    })
+}
+
+// 确认管道信息
+export function confirmPipeInfo(id, pipInfo) {
+    return request({
+        url: '/user/pdi/video/confirm_pipe_info/' + id,
+        method: 'post',
+        data: pipInfo
     })
 }
 

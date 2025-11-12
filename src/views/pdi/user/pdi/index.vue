@@ -70,12 +70,23 @@
             <el-table-column label="视频" width="160" align="center">
                 <template #default="{ row }">
                     <div class="video-preview" @click="openVideo(row.videoUrl)">
-                        <img :src="row.thumbnailUrl" alt="缩略图" class="thumbnail" />
-                        <div class="play-overlay">
-                            <el-icon size="32">
-                                <VideoPlay />
-                            </el-icon>
-                        </div>
+                        <template v-if="row.thumbnailUrl">
+                            <img :src="row.thumbnailUrl" alt="缩略图" class="thumbnail" />
+                            <div class="play-overlay">
+                                <el-icon size="32">
+                                    <VideoPlay />
+                                </el-icon>
+                            </div>
+                        </template>
+                        <template v-else>
+                            <el-skeleton animated>
+                                <template #template>
+                                    <el-skeleton-item
+                                        variant="image"
+                                        class="thumbnail skeleton-thumb" />
+                                </template>
+                            </el-skeleton>
+                        </template>
                     </div>
                 </template>
             </el-table-column>
@@ -85,25 +96,16 @@
                 prop="fileSize"
                 :formatter="formatFileSize" />
             <el-table-column label="文件类型" align="center" prop="mimeType" />
-            <el-table-column label="视频时长" align="center" prop="duration" />
+            <el-table-column label="视频时长" align="center" prop="duration">
+                <template #default="{ row }">
+                    <span>{{ row.duration }}s</span>
+                </template>
+            </el-table-column>
             <el-table-column label="分辨率" align="center" prop="resolution" />
             <!-- <el-table-column label="管道信息" align="center" prop="pipeInfo" /> -->
             <el-table-column label="管道信息" align="center" width="120">
                 <template #default="{ row }">
-                    <el-popover placement="right" width="400" trigger="hover">
-                        <template #reference>
-                            <el-button type="primary" link>查看详情</el-button>
-                        </template>
-                        <div class="pipe-info-detail">
-                            <div
-                                v-for="(value, key) in parsePipeInfo(row.pipeInfo)"
-                                :key="key"
-                                class="info-item">
-                                <span class="label">{{ formatLabel(key) }}:</span>
-                                <span class="value">{{ value || '-' }}</span>
-                            </div>
-                        </div>
-                    </el-popover>
+                    <el-button type="primary" link @click="openPipeInfoDialog(row)">查看</el-button>
                 </template>
             </el-table-column>
             <el-table-column label="上传状态" align="center" prop="uploadStatus">
@@ -120,9 +122,43 @@
             </el-table-column>
             <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
                 <template #default="scope">
-                    <el-button link type="primary" icon="Document" @click="handleDelete(scope.row)">
-                        生成
-                    </el-button>
+                    <template v-if="scope.row.uploadStatus === 0">
+                        <el-button
+                            link
+                            type="info"
+                            disabled
+                            icon="Loading"
+                            @click="handleGenerate(scope.row)">
+                            上传中
+                        </el-button>
+                    </template>
+                    <template v-else-if="scope.row.uploadStatus === 1">
+                        <el-button
+                            link
+                            type="primary"
+                            icon="Document"
+                            @click="handleGenerate(scope.row)">
+                            生成
+                        </el-button>
+                    </template>
+                    <template v-else-if="scope.row.uploadStatus === 2">
+                        <el-button
+                            link
+                            type="warning"
+                            icon="Refresh"
+                            @click="handleReupload(scope.row)">
+                            重新上传
+                        </el-button>
+                    </template>
+                    <template v-else-if="scope.row.uploadStatus === 3">
+                        <el-button
+                            link
+                            type="success"
+                            icon="Select"
+                            @click="openPipeInfoDialog(scope.row)">
+                            确认
+                        </el-button>
+                    </template>
                     <el-button link type="primary" icon="Delete" @click="handleDelete(scope.row)">
                         删除
                     </el-button>
@@ -131,7 +167,12 @@
         </el-table>
 
         <!-- 视频播放弹窗 -->
-        <el-dialog v-model="visible" :fullscreen="true" :show-close="true" @close="currentUrl = ''">
+        <el-dialog
+            v-model="visible"
+            width="80%"
+            :fullscreen="false"
+            :show-close="true"
+            @close="currentUrl = ''">
             <video
                 v-if="currentUrl"
                 :src="currentUrl"
@@ -139,6 +180,11 @@
                 controlslist="nodownload"
                 playsinline
                 class="video-player" />
+            <template #footer>
+                <div class="dialog-footer">
+                    <el-button @click="visible = false">关闭窗口</el-button>
+                </div>
+            </template>
         </el-dialog>
 
         <pagination
@@ -153,8 +199,9 @@
             <el-upload
                 drag
                 list-type="picture"
-                :on-progress="uploadVideoProcess"
                 :auto-upload="false"
+                :on-change="handleFileChange"
+                accept="video/*"
                 v-model:file-list="fileList"
                 multiple>
                 <el-icon class="el-icon--upload"><upload-filled /></el-icon>
@@ -164,8 +211,13 @@
                 </div>
                 <div class="el-upload__tip">mp4/avi 等文件必须小于 500MB</div>
                 <template #file="{ file }">
-                    <el-progress v-if="file.status === 'uploading'" :percentage="file.percentage" />
-                    <span v-else>{{ file.name }}</span>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap">
+                        <el-progress
+                            v-if="file.status === 'uploading'"
+                            :percentage="file.percentage || 0" />
+                        <span>{{ file.name }}</span>
+                        <el-button type="danger" link @click="removeFile(file)">删除</el-button>
+                    </div>
                 </template>
             </el-upload>
 
@@ -181,16 +233,71 @@
                 </div>
             </template>
         </el-dialog>
+
+        <!-- 管道信息查看/编辑弹窗 -->
+        <el-dialog
+            v-model="pipeInfoDialogVisible"
+            title="管道信息"
+            :width="isMobile ? '95%' : '600px'"
+            append-to-body>
+            <el-form :model="pipeInfoForm" label-width="120px">
+                <el-form-item label="任务名称">
+                    <el-input v-model="pipeInfoForm.task_name" placeholder="任务名称" />
+                </el-form-item>
+                <el-form-item label="检查位置">
+                    <el-input v-model="pipeInfoForm.inspection_location" placeholder="检查位置" />
+                </el-form-item>
+                <el-form-item label="检查日期">
+                    <el-input v-model="pipeInfoForm.inspection_date" placeholder="检查日期" />
+                </el-form-item>
+                <el-form-item label="起止井号">
+                    <el-input
+                        v-model="pipeInfoForm.start_manhole_id_end_manhole_id"
+                        placeholder="起止井号" />
+                </el-form-item>
+                <el-form-item label="检查方向">
+                    <el-input v-model="pipeInfoForm.inspection_direction" placeholder="检查方向" />
+                </el-form-item>
+                <el-form-item label="管道材质">
+                    <el-input v-model="pipeInfoForm.pipe_material" placeholder="管道材质" />
+                </el-form-item>
+                <el-form-item label="管道管径">
+                    <el-input v-model="pipeInfoForm.pipe_diameter" placeholder="管道管径" />
+                </el-form-item>
+                <el-form-item label="管道类型">
+                    <el-input v-model="pipeInfoForm.pipeline_type" placeholder="管道类型" />
+                </el-form-item>
+                <el-form-item label="检查单位">
+                    <el-input v-model="pipeInfoForm.inspection_unit" placeholder="检查单位" />
+                </el-form-item>
+                <el-form-item label="检查员">
+                    <el-input v-model="pipeInfoForm.inspector" placeholder="检查员" />
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <div class="dialog-footer">
+                    <el-button @click="pipeInfoDialogVisible = false">取消</el-button>
+                    <el-button type="success" @click="confirmPipeInfoAction">确认</el-button>
+                </div>
+            </template>
+        </el-dialog>
     </div>
 </template>
 
 <script setup name="Video">
-    import { listVideo, getVideo, delVideo, addVideo, updateVideo } from '@/api/pdi/pdi'
-    import { getVideoInfo, captureMiddleFrame } from '@/utils/video-tools'
+    import {
+        listVideo,
+        delVideo,
+        addVideo,
+        confirmPipeInfo,
+        reuploadVideo,
+        updateVideo,
+    } from '@/api/pdi/pdi'
+    import { getVideoInfo } from '@/utils/video-tools'
+    import { getToken } from '@/utils/auth'
 
     const { proxy } = getCurrentInstance()
     const { pdi_upload_status } = proxy.useDict('pdi_upload_status')
-    import { getToken } from '@/utils/auth'
 
     const videoList = ref([])
     const loading = ref(true)
@@ -203,6 +310,12 @@
     const uploadDialog = ref(false)
 
     const fileList = ref([])
+    const uploadProgressMap = ref({}) // { [videoId]: percent } or fallback by temp key
+
+    // 管道信息弹窗与表单
+    const pipeInfoDialogVisible = ref(false)
+    const pipeInfoForm = ref({})
+    const currentPipeRowId = ref(null)
 
     const data = reactive({
         form: {},
@@ -213,46 +326,9 @@
             createBy: null,
             createTime: null,
         },
-        rules: {
-            videoName: [
-                {
-                    required: true,
-                    message: '视频文件名不能为空',
-                    trigger: 'blur',
-                },
-            ],
-            videoUrl: [{ required: true, message: '视频URL不能为空', trigger: 'blur' }],
-            thumbnailUrl: [
-                {
-                    required: true,
-                    message: '缩略图URL不能为空',
-                    trigger: 'blur',
-                },
-            ],
-            pipeInfo: [
-                {
-                    required: true,
-                    message: '管道信息JSON结构化字段不能为空',
-                    trigger: 'blur',
-                },
-            ],
-        },
-        uploadFormData: {
-            host: '',
-            success_action_status: '',
-            policy: '',
-            x_oss_signature: '',
-            x_oss_signature_version: 'OSS4-HMAC-SHA256',
-            x_oss_credential: '',
-            x_oss_date: '',
-            key: '', // 文件名
-            x_oss_security_token: '',
-            callback: '', // 添加回调参数
-            file: '', // file 必须为最后一个表单域
-        },
     })
 
-    const { queryParams, uploadFormData } = toRefs(data)
+    const { queryParams } = toRefs(data)
 
     const parsePipeInfo = (pipeInfo) => {
         try {
@@ -262,21 +338,6 @@
         }
     }
 
-    const formatLabel = (key) => {
-        const labelMap = {
-            task_name: '任务名称',
-            inspection_location: '检查位置',
-            inspection_date: '检查日期',
-            start_manhole_id_end_manhole_id: '起止井号',
-            inspection_direction: '检查方向',
-            pipe_material: '管道材质',
-            pipe_diameter: '管道管径',
-            pipeline_type: '管道类型',
-            inspection_unit: '检查单位',
-            inspector: '检查员',
-        }
-        return labelMap[key] || key
-    }
     const formatFileSize = (row) => {
         const size = Number(row.fileSize)
 
@@ -285,70 +346,112 @@
         else if (size < 1024 * 1024 * 1024) return (size / (1024 * 1024)).toFixed(2) + ' MB'
         else return (size / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
     }
-    // 上传状态控制
-    const videoFlag = ref(false)
-    const videoUploadPercent = ref(0)
-    // 上传进度
-    const uploadVideoProcess = (event, file) => {
-        videoFlag.value = true
-        videoUploadPercent.value = Math.round(file.percentage)
+
+    // 选择文件时校验（视频格式与大小限制 500MB）
+    const handleFileChange = (uploadFile, uploadFiles) => {
+        const allowedTypes = [
+            'video/mp4',
+            'video/ogg',
+            'video/flv',
+            'video/avi',
+            'video/wmv',
+            'video/rmvb',
+            'video/mov',
+            'video/webm',
+            'video/mpeg',
+        ]
+        const invalids = []
+        fileList.value = uploadFiles.filter((f) => {
+            const raw = f.raw || f
+            const isTypeOk = raw && allowedTypes.includes(raw.type)
+            const isSizeOk = raw && raw.size / 1024 / 1024 < 500
+            const ok = !!(isTypeOk && isSizeOk)
+            if (!ok) invalids.push(f.name)
+            return ok
+        })
+        if (invalids.length) {
+            proxy.$modal.msgError('以下文件已移除（格式或大小非法）：' + invalids.join(', '))
+        }
+    }
+    const removeFile = (file) => {
+        const idx = fileList.value.findIndex((f) => f.uid === file.uid)
+        if (idx > -1) fileList.value.splice(idx, 1)
+    }
+
+    // 打开管道信息表单弹窗
+    const openPipeInfoDialog = (row) => {
+        currentPipeRowId.value = row.id
+        pipeInfoForm.value = { ...(parsePipeInfo(row.pipeInfo) || {}) }
+        pipeInfoDialogVisible.value = true
+    }
+
+    // 确认管道信息（用于状态=3）
+    const confirmPipeInfoAction = async () => {
+        getList()
+        if (!currentPipeRowId.value) return
+        const payload = JSON.stringify(pipeInfoForm.value || {})
+        await confirmPipeInfo(currentPipeRowId.value, payload)
+        proxy.$modal.msgSuccess('更改管道信息成功')
+        pipeInfoDialogVisible.value = false
+        getList()
     }
     const uploadToOSS = async () => {
+        uploadDialog.value = false
+        if (fileList.value.length === 0) {
+            proxy.$modal.msgError('请先选择文件')
+            return
+        }
         for (const fileItem of fileList.value) {
             const file = fileItem.raw
-            console.log(fileItem)
             // 1️⃣ 获取视频信息
             const info = await getVideoInfo(file)
-            console.log('视频信息:', info)
-
-            // 2️⃣ 截取视频中间帧为缩略图
-            const image = await captureMiddleFrame(file)
-            console.log('生成缩略图:', image)
-
-            // 3️⃣ 调用上传接口
-            await addVideo({
-                pipeVideo: JSON.stringify({
-                    videoName: file.name,
-                    fileSize: file.size,
-                    mimeType: file.type,
-                    duration: info.duration,
-                    resolution: info.resolution,
-                }),
-                image: image, // 缩略图文件对象
-            }).then((res) => {
-                if (res.code === 200) {
-                    const data = res.data
-                    console.log(data)
-                    let formData = new FormData()
-                    formData.append('success_action_status', '200')
-                    formData.append('policy', data.policy)
-                    formData.append('x-oss-signature', data.signature)
-                    formData.append('x-oss-signature-version', 'OSS4-HMAC-SHA256')
-                    formData.append('x-oss-credential', data.x_oss_credential)
-                    formData.append('x-oss-date', data.x_oss_date)
-                    formData.append('key', data.dir + file.name) // 文件名
-                    formData.append('x-oss-security-token', data.security_token)
-                    formData.append('callback', data.callback) // 添加回调参数
-                    formData.append('file', file) // file 必须为最后一个表单域
-                    console.log(formData.forEach((value, key) => console.log(key + ': ' + value)))
-                    fetch(data.host, {
-                        method: 'POST',
-                        body: formData,
-                    }).then((response) => {
+            addVideo(info).then((res) => {
+                if (!res.code || res.code !== 200) {
+                    proxy.$modal.msgError(res.msg || '获取签名失败')
+                    return
+                }
+                const data = res.data
+                let formData = new FormData()
+                formData.append('success_action_status', '200')
+                formData.append('policy', data.policy)
+                formData.append('x-oss-signature', data.signature)
+                formData.append('x-oss-signature-version', 'OSS4-HMAC-SHA256')
+                formData.append('x-oss-credential', data.x_oss_credential)
+                formData.append('x-oss-date', data.x_oss_date)
+                const timestamp = Date.now()
+                const fileNameParts = fileItem.name.split('.')
+                const fileExtension = fileNameParts.pop()
+                const fileNameWithoutExtension = fileNameParts.join('.')
+                const newFileName = `${fileNameWithoutExtension}_${timestamp}.${fileExtension}`
+                formData.append('key', data.dir + newFileName) // 文件名
+                formData.append('x-oss-security-token', data.security_token)
+                formData.append('callback', data.callback) // 添加回调参数
+                formData.append('Content-Type', file.type)
+                formData.append('file', file) // file 必须为最后一个表单域
+                getList()
+                fetch(data.host, {
+                    method: 'POST',
+                    body: formData,
+                })
+                    .then((response) => {
                         if (response.ok) {
-                            console.log('上传成功', response)
-                            proxy.$modal.msgSuccess('文件已上传')
+                            if (response.status === 200) {
+                                getList()
+                                proxy.$modal.msgSuccess('上传成功')
+                            } else {
+                                proxy.$modal.msgError('上传失败')
+                            }
                         } else {
-                            console.log('上传失败', response)
-                            proxy.$modal.msgError('上传失败，请稍后再试')
+                            proxy.$modal.msgError('上传失败')
                         }
                     })
-                } else {
-                    proxy.$modal.msgError(`${file.name} 上传失败: ${res.msg}`)
-                }
+                    .catch((error) => {
+                        proxy.$modal.msgError('上传失败: ' + error.message)
+                    })
             })
-            // console.log(`${file.name} 上传完成`)
         }
+        fileList.value = []
+        getList()
     }
 
     /** 查询管道视频列表 */
@@ -403,10 +506,68 @@
 
     const visible = ref(false)
     const currentUrl = ref('')
+    const isMobile = ref(false)
+    onMounted(() => {
+        const updateIsMobile = () => {
+            isMobile.value = window.innerWidth < 768
+        }
+        updateIsMobile()
+        window.addEventListener('resize', updateIsMobile)
+    })
+    onBeforeUnmount(() => {
+        window.removeEventListener('resize', () => {})
+    })
 
     const openVideo = (url) => {
         currentUrl.value = url
         visible.value = true
+    }
+
+    // 生成占位（仅输出日志）
+    const handleGenerate = (row) => {
+        console.log('生成任务，视频ID：', row.id)
+        // 预留生成逻辑
+    }
+
+    // 重新上传：调用后端接口获取签名后直传
+    const handleReupload = async (row) => {
+        try {
+            const res = await reuploadVideo(row.id)
+            if (res.code !== 200) {
+                proxy.$modal.msgError('获取签名失败：' + (res.msg || ''))
+                return
+            }
+            // console.log(res)
+            const data = res.data
+            // 这里假设后端返回的数据中包含必须直传信息，与 addVideo 返回一致
+            // 并且需要重新上传的源文件不在本地；通常重传需要后端重新回源，或前端仍持有文件。
+            // 若后端返回需要的文件信息不在前端，此处仅触发直传流程的占位（无法真正上传本地文件）。
+            // 可选：仅触发状态更新或提示后端进行服务端重传。
+            let formData = new FormData()
+            formData.append('success_action_status', '200')
+            formData.append('policy', data.policy)
+            formData.append('x-oss-signature', data.signature)
+            formData.append('x-oss-signature-version', 'OSS4-HMAC-SHA256')
+            formData.append('x-oss-credential', data.x_oss_credential)
+            formData.append('x-oss-date', data.x_oss_date)
+            formData.append('key', data.key || (data.dir ? data.dir + (data.fileName || '') : '')) // 尽力拼接
+            formData.append('x-oss-security-token', data.security_token)
+            formData.append('callback', data.callback)
+            if (data.file instanceof File) {
+                formData.append('file', data.file)
+            } else {
+                // 无法获取原文件时，提示用户重新选择文件上传
+                proxy.$modal.msgWarning('无法直接重传，请在上传弹窗中重新选择视频后上传')
+                return
+            }
+            await postToOssWithProgress(data.host, formData, (percent) => {
+                uploadProgressMap.value[row.id] = percent
+            })
+            proxy.$modal.msgSuccess('重传完成')
+            getList()
+        } catch (e) {
+            proxy.$modal.msgError('重传失败，请稍后再试')
+        }
     }
 
     getList()
@@ -425,6 +586,11 @@
         width: 100%;
         height: 100%;
         object-fit: cover;
+    }
+    .skeleton-thumb {
+        width: 100%;
+        height: 100%;
+        display: block;
     }
 
     .play-overlay {
@@ -459,19 +625,9 @@
 
     .video-player {
         width: 100%;
-        height: 100vh;
+        height: 70vh;
         object-fit: contain;
-        background: #000;
     }
 
-    /* 移除弹窗默认内边距 */
-    :deep(.el-dialog__body) {
-        padding: 0;
-        height: 100%;
-        background: #000;
-    }
-
-    :deep(.el-dialog__header) {
-        display: none;
-    }
+    /* 恢复默认头部与内边距，适配常规对话框 */
 </style>
