@@ -120,7 +120,11 @@
                     </span>
                 </template>
             </el-table-column>
-            <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
+            <el-table-column
+                label="操作"
+                align="center"
+                class-name="small-padding fixed-width"
+                width="180">
                 <template #default="scope">
                     <template v-if="scope.row.uploadStatus === 0">
                         <el-button
@@ -291,6 +295,7 @@
         addVideo,
         confirmPipeInfo,
         reuploadVideo,
+        getVideo,
         updateVideo,
     } from '@/api/pdi/pdi'
     import { getVideoInfo } from '@/utils/video-tools'
@@ -525,6 +530,22 @@
 
     // 生成占位（仅输出日志）
     const handleGenerate = (row) => {
+        getVideo(row.id).then((res) => {
+            if (res.code !== 200) {
+                proxy.$modal.msgError('获取视频信息失败：' + (res.msg || ''))
+                return
+            }
+            // console.log(res)
+            const data = res.data
+            // if (data.uploadStatus !== 1) {
+            //     proxy.$modal.msgWarning('视频未上传完成，无法生成任务')
+            //     return
+            // }
+            console.log(data)
+            console.log(data.videoUrl)
+            console.log(JSON.parse(data.pipeInfo))
+            proxy.$modal.msgSuccess('生成任务请求已发送')
+        })
         console.log('生成任务，视频ID：', row.id)
         // 预留生成逻辑
     }
