@@ -79,10 +79,10 @@
                             </div>
                         </template>
                         <template v-else>
-                            <el-skeleton animated>
+                            <el-skeleton animated class="thumbnail skeleton-thumb">
                                 <template #template>
                                     <el-skeleton-item
-                                        variant="image"
+                                    
                                         class="thumbnail skeleton-thumb" />
                                 </template>
                             </el-skeleton>
@@ -299,7 +299,7 @@
         updateVideo,
     } from '@/api/pdi/pdi'
     import { getVideoInfo } from '@/utils/video-tools'
-    import { getToken } from '@/utils/auth'
+    import useUserStore from '@/store/modules/user'
 
     const { proxy } = getCurrentInstance()
     const { pdi_upload_status } = proxy.useDict('pdi_upload_status')
@@ -315,7 +315,6 @@
     const uploadDialog = ref(false)
 
     const fileList = ref([])
-    const uploadProgressMap = ref({}) // { [videoId]: percent } or fallback by temp key
 
     // 管道信息弹窗与表单
     const pipeInfoDialogVisible = ref(false)
@@ -581,9 +580,6 @@
                 proxy.$modal.msgWarning('无法直接重传，请在上传弹窗中重新选择视频后上传')
                 return
             }
-            await postToOssWithProgress(data.host, formData, (percent) => {
-                uploadProgressMap.value[row.id] = percent
-            })
             proxy.$modal.msgSuccess('重传完成')
             getList()
         } catch (e) {
@@ -591,6 +587,32 @@
         }
     }
 
+    const userId = useUserStore().id
+    // console.log(userId)
+    // const uploadUrl = ref(import.meta.env.VITE_APP_BASE_API) // 上传的图片服务器地址
+    // console.log(uploadUrl.value)
+    // let ws = new WebSocket(`ws://${uploadUrl.value}/ws/${userId}`)
+    let ws = new WebSocket(`ws://localhost:8080/ws/${userId}`)
+
+    ws.onopen = () => {
+        console.log('WebSocket 连接成功')
+    }
+
+    ws.onmessage = (event) => {
+        console.log('WebSocket 收到消息:', event.data)
+
+        if (event.data.startsWith('ocr-update')) {
+            const videoId = event.data.split(':')[1]
+            // 自动刷新
+            // loadVideoInfo(videoId)
+            console.log(videoId)
+            getList()
+        }
+    }
+
+    ws.onerror = () => {
+        console.log('WebSocket 连接出错')
+    }
     getList()
 </script>
 <style scoped>
