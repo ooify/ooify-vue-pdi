@@ -610,8 +610,7 @@
     }
 
     const userId = useUserStore().id
-
-    let ws = new WebSocket(`ws://localhost:8080/ws/${userId}`)
+    let ws = new WebSocket(`ws://localhost:8080/ws/pdi/${userId}`)
 
     ws.onopen = () => {
         console.log('WebSocket 连接成功')
