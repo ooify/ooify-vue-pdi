@@ -310,6 +310,7 @@
     } from '@/api/pdi/pdi'
     import { getVideoInfo } from '@/utils/video-tools'
     import useUserStore from '@/store/modules/user'
+    import websocketService from '@/utils/websocket'
 
     const { proxy } = getCurrentInstance()
     const { pdi_upload_status } = proxy.useDict('pdi_upload_status')
@@ -521,16 +522,6 @@
     const visible = ref(false)
     const currentUrl = ref('')
     const isMobile = ref(false)
-    onMounted(() => {
-        const updateIsMobile = () => {
-            isMobile.value = window.innerWidth < 768
-        }
-        updateIsMobile()
-        window.addEventListener('resize', updateIsMobile)
-    })
-    onBeforeUnmount(() => {
-        window.removeEventListener('resize', () => {})
-    })
 
     const openVideo = (url) => {
         currentUrl.value = url
@@ -610,27 +601,34 @@
     }
 
     const userId = useUserStore().id
-    let ws = new WebSocket(`ws://localhost:8080/ws/pdi/${userId}`)
+    let unsubscribeVideoUpload = null
 
-    ws.onopen = () => {
-        console.log('WebSocket 连接成功')
-    }
+    onMounted(() => {
+        // 初始化 WebSocket 连接
+        websocketService.connect(userId)
 
-    ws.onmessage = (event) => {
-        console.log('WebSocket 收到消息:', event.data)
-
-        if (event.data.startsWith('ocr-update')) {
-            const videoId = event.data.split(':')[1]
-            // 自动刷新
-            // loadVideoInfo(videoId)
-            console.log(videoId)
+        // 订阅 video-upload 类型消息
+        unsubscribeVideoUpload = websocketService.subscribe('video-upload', (data) => {
+            console.log('收到视频上传消息，视频ID：', data.videoId)
             getList()
-        }
-    }
+        })
 
-    ws.onerror = () => {
-        console.log('WebSocket 连接出错')
-    }
+        // 响应式更新
+
+        const updateIsMobile = () => {
+            isMobile.value = window.innerWidth < 768
+        }
+        updateIsMobile()
+        window.addEventListener('resize', updateIsMobile)
+    })
+    onBeforeUnmount(() => {
+        window.removeEventListener('resize', () => {})
+
+        // 取消订阅
+        if (unsubscribeVideoUpload) {
+            unsubscribeVideoUpload()
+        }
+    })
     getList()
 </script>
 <style scoped>

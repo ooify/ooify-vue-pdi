@@ -250,6 +250,8 @@
 
 <script setup name="Task">
     import { listTask, getTask, delTask } from '@/api/pdi/doc'
+    import useUserStore from '@/store/modules/user'
+    import websocketService from '@/utils/websocket'
 
     const { proxy } = getCurrentInstance()
     const { pdi_task_status } = proxy.useDict('pdi_task_status', 'pdi_is_delete')
@@ -399,6 +401,35 @@
         }
     }
 
+    const userId = useUserStore().id
+    let unsubscribeVideoUpload = null
+
+    onMounted(() => {
+        // 初始化 WebSocket 连接
+        websocketService.connect(userId)
+
+        // 订阅 video-upload 类型消息
+        unsubscribeVideoUpload = websocketService.subscribe('task-update', (data) => {
+            console.log('收到文档任务消息，任务ID：', data.videoId)
+            getList()
+        })
+        
+        // 响应式更新
+
+        const updateIsMobile = () => {
+            isMobile.value = window.innerWidth < 768
+        }
+        updateIsMobile()
+        window.addEventListener('resize', updateIsMobile)
+    })
+    onBeforeUnmount(() => {
+        window.removeEventListener('resize', () => {})
+
+        // 取消订阅
+        if (unsubscribeVideoUpload) {
+            unsubscribeVideoUpload()
+        }
+    })
     getList()
 </script>
 <style scoped>
