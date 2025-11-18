@@ -46,7 +46,7 @@
                     plain
                     icon="Document"
                     :disabled="multiple"
-                    @click="handleDelete">
+                    @click="handleGenerate">
                     生成
                 </el-button>
             </el-col>
@@ -81,9 +81,7 @@
                         <template v-else>
                             <el-skeleton animated class="thumbnail skeleton-thumb">
                                 <template #template>
-                                    <el-skeleton-item
-                                    
-                                        class="thumbnail skeleton-thumb" />
+                                    <el-skeleton-item class="thumbnail skeleton-thumb" />
                                 </template>
                             </el-skeleton>
                         </template>
@@ -105,7 +103,13 @@
             <!-- <el-table-column label="管道信息" align="center" prop="pipeInfo" /> -->
             <el-table-column label="管道信息" align="center" width="120">
                 <template #default="{ row }">
-                    <el-button type="primary" link @click="openPipeInfoDialog(row)">查看</el-button>
+                    <el-button
+                        :disabled="row.uploadStatus === 4"
+                        type="primary"
+                        link
+                        @click="openPipeInfoDialog(row)">
+                        查看
+                    </el-button>
                 </template>
             </el-table-column>
             <el-table-column label="上传状态" align="center" prop="uploadStatus">
@@ -127,13 +131,19 @@
                 width="180">
                 <template #default="scope">
                     <template v-if="scope.row.uploadStatus === 0">
-                        <el-button
-                            link
-                            type="info"
-                            disabled
-                            icon="Loading"
-                            @click="handleGenerate(scope.row)">
+                        <el-button link type="info" disabled @click="handleGenerate(scope.row)">
+                            <el-icon class="custom-loading-icon">
+                                <Loading />
+                            </el-icon>
                             上传中
+                        </el-button>
+                    </template>
+                    <template v-if="scope.row.uploadStatus === 4">
+                        <el-button link type="info" disabled @click="handleGenerate(scope.row)">
+                            <el-icon class="custom-loading-icon">
+                                <Loading />
+                            </el-icon>
+                            识别中
                         </el-button>
                     </template>
                     <template v-else-if="scope.row.uploadStatus === 1">
@@ -529,23 +539,35 @@
 
     // 生成占位（仅输出日志）
     const handleGenerate = (row) => {
-        getVideo(row.id).then((res) => {
-            if (res.code !== 200) {
-                proxy.$modal.msgError('获取视频信息失败：' + (res.msg || ''))
-                return
-            }
-            // console.log(res)
-            const data = res.data
-            // if (data.uploadStatus !== 1) {
-            //     proxy.$modal.msgWarning('视频未上传完成，无法生成任务')
-            //     return
-            // }
-            console.log(data)
-            console.log(data.videoUrl)
-            console.log(JSON.parse(data.pipeInfo))
-            proxy.$modal.msgSuccess('生成任务请求已发送')
-        })
-        console.log('生成任务，视频ID：', row.id)
+        const _ids = row.id || ids.value
+        proxy.$modal
+            .confirm('是否确认生成所选的数据项？')
+            .then(function () {
+                console.log(_ids)
+                // return delVideo(_ids)
+            })
+            // .then(() => {
+            //     getList()
+            //     proxy.$modal.msgSuccess('删除成功')
+            // })
+            .catch(() => {})
+        // getVideo(row.id).then((res) => {
+        //     if (res.code !== 200) {
+        //         proxy.$modal.msgError('获取视频信息失败：' + (res.msg || ''))
+        //         return
+        //     }
+        //     // console.log(res)
+        //     const data = res.data
+        //     // if (data.uploadStatus !== 1) {
+        //     //     proxy.$modal.msgWarning('视频未上传完成，无法生成任务')
+        //     //     return
+        //     // }
+        //     console.log(data)
+        //     console.log(data.videoUrl)
+        //     console.log(JSON.parse(data.pipeInfo))
+        //     proxy.$modal.msgSuccess('生成任务请求已发送')
+        // })
+        // console.log('生成任务，视频ID：', row.id)
         // 预留生成逻辑
     }
 
@@ -588,10 +610,7 @@
     }
 
     const userId = useUserStore().id
-    // console.log(userId)
-    // const uploadUrl = ref(import.meta.env.VITE_APP_BASE_API) // 上传的图片服务器地址
-    // console.log(uploadUrl.value)
-    // let ws = new WebSocket(`ws://${uploadUrl.value}/ws/${userId}`)
+
     let ws = new WebSocket(`ws://localhost:8080/ws/${userId}`)
 
     ws.onopen = () => {
@@ -672,5 +691,7 @@
         object-fit: contain;
     }
 
-    /* 恢复默认头部与内边距，适配常规对话框 */
+    .custom-loading-icon {
+        animation: spin 1s linear infinite;
+    }
 </style>
