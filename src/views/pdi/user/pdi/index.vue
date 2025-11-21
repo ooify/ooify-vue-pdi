@@ -64,7 +64,7 @@
             <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
         </el-row>
         <el-table v-loading="loading" :data="videoList" @selection-change="handleSelectionChange">
-            <el-table-column type="selection" width="55" align="center" />
+            <el-table-column type="selection" width="55" align="center" :selectable="selectable" />
 
             <!-- 视频显示列 -->
             <el-table-column label="视频" width="160" align="center">
@@ -308,9 +308,11 @@
         getVideo,
         updateVideo,
     } from '@/api/pdi/pdi'
+    import { generateReport } from '@/api/pdi/doc'
     import { getVideoInfo } from '@/utils/video-tools'
     import useUserStore from '@/store/modules/user'
     import websocketService from '@/utils/websocket'
+    import tab from '@/plugins/tab'
 
     const { proxy } = getCurrentInstance()
     const { pdi_upload_status } = proxy.useDict('pdi_upload_status')
@@ -344,6 +346,8 @@
     })
 
     const { queryParams } = toRefs(data)
+
+    const selectable = (row) => row.uploadStatus === 1
 
     const parsePipeInfo = (pipeInfo) => {
         try {
@@ -527,7 +531,6 @@
         currentUrl.value = url
         visible.value = true
     }
-
     // 生成占位（仅输出日志）
     const handleGenerate = (row) => {
         const _ids = row.id || ids.value
@@ -535,31 +538,17 @@
             .confirm('是否确认生成所选的数据项？')
             .then(function () {
                 console.log(_ids)
-                // return delVideo(_ids)
+                return generateReport(_ids)
             })
-            // .then(() => {
-            //     getList()
-            //     proxy.$modal.msgSuccess('删除成功')
-            // })
-            .catch(() => {})
-        // getVideo(row.id).then((res) => {
-        //     if (res.code !== 200) {
-        //         proxy.$modal.msgError('获取视频信息失败：' + (res.msg || ''))
-        //         return
-        //     }
-        //     // console.log(res)
-        //     const data = res.data
-        //     // if (data.uploadStatus !== 1) {
-        //     //     proxy.$modal.msgWarning('视频未上传完成，无法生成任务')
-        //     //     return
-        //     // }
-        //     console.log(data)
-        //     console.log(data.videoUrl)
-        //     console.log(JSON.parse(data.pipeInfo))
-        //     proxy.$modal.msgSuccess('生成任务请求已发送')
-        // })
-        // console.log('生成任务，视频ID：', row.id)
-        // 预留生成逻辑
+            .then(() => {
+                getList()
+                proxy.$modal.msgSuccess('创建任务成功')
+                tab.openPage('报告生成', '/doc')
+            })
+            .catch((e) => {
+                console.log(e)
+                proxy.$modal.msgError('创建任务失败')
+            })
     }
 
     // 重新上传：调用后端接口获取签名后直传

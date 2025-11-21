@@ -139,13 +139,12 @@
                         </el-button>
                     </template>
                     <template v-if="scope.row.taskStatus === 2">
-                        <el-button
-                            link
-                            type="success"
-                            icon="Download"
-                            @click="handleDownload(scope.row.reportUrl)">
-                            下载
+                        <el-button link>
+                            <el-link icon="Download" type="success" :href="scope.row.reportUrl">
+                                下载
+                            </el-link>
                         </el-button>
+
                         <el-button
                             link
                             type="primary"
@@ -249,7 +248,7 @@
 </template>
 
 <script setup name="Task">
-    import { listTask, getTask, delTask } from '@/api/pdi/doc'
+    import { listTask, delTask } from '@/api/pdi/doc'
     import useUserStore from '@/store/modules/user'
     import websocketService from '@/utils/websocket'
 
@@ -264,7 +263,7 @@
     const single = ref(true)
     const multiple = ref(true)
     const total = ref(0)
-    const title = ref('')
+
     const daterangeStartTime = ref([])
     const daterangeEndTime = ref([])
     const daterangeCreateTime = ref([])
@@ -344,13 +343,6 @@
         multiple.value = !selection.length
     }
 
-    /** 新增按钮操作 */
-    function handleAdd() {
-        reset()
-        open.value = true
-        title.value = '添加报告生成任务'
-    }
-
     /** 删除按钮操作 */
     function handleDelete(row) {
         const _ids = row.id || ids.value
@@ -408,12 +400,12 @@
         // 初始化 WebSocket 连接
         websocketService.connect(userId)
 
-        // 订阅 video-upload 类型消息
+        // 订阅 task-update 类型消息
         unsubscribeVideoUpload = websocketService.subscribe('task-update', (data) => {
-            console.log('收到文档任务消息，任务ID：', data.videoId)
+            console.log('收到文档任务消息，任务ID：', data.taskId)
             getList()
         })
-        
+
         // 响应式更新
 
         const updateIsMobile = () => {
